@@ -261,8 +261,8 @@ PanelWindow {
   property real petX: 0
   property real petY: 0            // the mate's feet line
   property bool facingLeft: false
-  property string action: "idle"   // idle | walk | climb | drag | fall | stunned | corner
-                                 //        | chase | pull
+  property string action: "idle"   // idle | walk | climb | drag | fall | stunned
+                                   //        | corner | chase | pull
   property real targetX: 0
   property real targetY: 0
   // Throw velocity from the last drag samples.
@@ -494,13 +494,13 @@ PanelWindow {
   // A plain wander IS interruptible -- a mate that only noticed the pointer
   // while standing perfectly still would almost never notice it at all, since
   // wandering is its default state. A walk that is on its way somewhere
-  // specific (a climb approach, a corner trip) is left to finish.
+  // specific (a climb approach) is left to finish.
   function chaseAllowed() {
     if (!chaseEnabled || asleep || chaseResting || menu.open || support)
       return false
     if (!hasBiteArt()) return false
     if (action === "idle" || action === "chase" || action === "pull") return true
-    return action === "walk" && !pendingClimb && !pendingCorner
+    return action === "walk" && !pendingClimb
   }
 
   // The chomp is played with the existing `poked` pose, so a pack without one
@@ -508,11 +508,9 @@ PanelWindow {
   // then nothing visibly happens. Better not to chase at all than to chase
   // and have the payoff missing.
   //
-  // hasAnim() is the right check here, unlike hasCornerArt() above: `poke` is
-  // an animation the engine already knows, so hasAnim resolves it correctly
-  // for legacy a/b packs (Mochi declares `poke` with no frame list) as well as
-  // for frame-list packs. `corner` is new and unknown to older packs, which is
-  // why that one has to inspect the declared frames directly.
+  // hasAnim() is the right check: `poke` is an animation the engine already
+  // knows, so it resolves correctly for legacy a/b packs (Mochi declares
+  // `poke` with no frame list) as well as for frame-list packs.
   function hasBiteArt() {
     return petService ? petService.hasAnim("poke") : false
   }

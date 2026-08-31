@@ -64,8 +64,8 @@ Sizes range from the 24px cat up to 250px Totoro, settable per pack.
   send it.
 - **Sounds**: tiny synthesized blips (grab, purr, poke, thud, zzz, wake).
 - **Menu**: right-click the cat for settings / window-hop / walk / nap /
-  mute / hide, plus "Stop chasing" while a chase is armed and — for packs
-  with `corner` art — "Find a corner".
+  mute / hide (plus "Find a corner" for packs with `corner` art, and
+  "Stop chasing" while a chase is armed).
 - **Settings panel**: click the bar button (or the cat's "Settings…" menu
   entry) for a popup card styled like the plugin manager's rows — an
   animated sprite in the header, an enable/disable power switch in the top
@@ -199,6 +199,7 @@ omarchy-shell omate corner         # wander to the nearest corner (packs
                                    # with "corner" art only)
 omarchy-shell omate setCursorChase true   # chase the mouse pointer
 omarchy-shell omate toggleCursorChase
+omarchy-shell omate setChaseCooldown 300  # seconds between chases, 5-3600
 omarchy-shell omate hop            # teleport onto a random floating window
                                    # (or leap for joy if none are around)
 omarchy-shell omate status
