@@ -494,13 +494,13 @@ PanelWindow {
   // A plain wander IS interruptible -- a mate that only noticed the pointer
   // while standing perfectly still would almost never notice it at all, since
   // wandering is its default state. A walk that is on its way somewhere
-  // specific (a climb approach) is left to finish.
+  // specific (a climb approach, a corner trip) is left to finish.
   function chaseAllowed() {
     if (!chaseEnabled || asleep || chaseResting || menu.open || support)
       return false
     if (!hasBiteArt()) return false
     if (action === "idle" || action === "chase" || action === "pull") return true
-    return action === "walk" && !pendingClimb
+    return action === "walk" && !pendingClimb && !pendingCorner
   }
 
   // The chomp is played with the existing `poked` pose, so a pack without one
