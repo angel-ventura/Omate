@@ -424,10 +424,7 @@ PanelWindow {
     var bounds = currentSurfaceBounds()
     var leftX = bounds.x1
     var rightX = bounds.x2 - spriteW
-    // After startWalkTo: it clears the previous walk's intent, and this trip
-    // IS the new intent.
-    startWalkTo((petX - leftX) <= (rightX - petX) ? leftX : rightX, null)
-    pendingCorner = true
+    startWalkTo((petX - leftX) <= (rightX - petX) ? leftX : rightX, null, true)
   }
 
   // --- cursor chase ------------------------------------------------------
@@ -720,18 +717,29 @@ PanelWindow {
     }
   }
 
-  function startWalkTo(x, climb) {
+  // The optional climb/corner arguments ARE the new walk's intent, set
+  // atomically with the clear of the old one -- setting a flag before or
+  // after this call is how intents end up stale or wiped.
+  function startWalkTo(x, climb, corner) {
     if (asleep && petService) petService.wake(false)
     var bounds = currentSurfaceBounds()
     targetX = Math.max(bounds.x1, Math.min(bounds.x2 - spriteW, x))
     clearWalkIntent()
     pendingClimb = climb || null
+    pendingCorner = corner === true
     facingLeft = targetX < petX
     action = "walk"
   }
 
   function walkTo(x) {
     if (asleep && petService) petService.wake(false)
+    // Reachable mid-climb from the menu's "Walk over", and a walk only moves
+    // horizontally -- started in mid-air it would carry the mate across the
+    // sky. Abandon by falling instead; it can wander after it lands.
+    if (!support && petY < floorY - 1) {
+      startFall()
+      return
+    }
     clearWalkIntent()
     targetX = clampX(x)
     facingLeft = targetX < petX
