@@ -94,12 +94,17 @@ PanelWindow {
 
   readonly property var hyprMonitor: Hyprland.monitorFor(root.screen)
 
-  // The bar's reserved strip, so the floor sits above a bottom bar.
+  // The bar's reserved strip, so the floor sits above a bottom bar. An
+  // unmapped surface (hidden mate, window not yet shown) has no height, so
+  // the output's own stands in -- otherwise everything measured against the
+  // floor (clampY, landings, migrations, restores) collapses to the top of
+  // the screen.
   readonly property real floorY: {
+    var h = height > 0 ? height : (screen ? screen.height : 0)
     var ipc = hyprMonitor ? hyprMonitor.lastIpcObject : null
     var reservedBottom = ipc && ipc.reserved && ipc.reserved.length > 3
       ? Number(ipc.reserved[3]) : 0
-    return height - reservedBottom
+    return Math.max(0, h - reservedBottom)
   }
 
   // The compositor only pushes monitor events on (un)plug and mode changes;
@@ -953,25 +958,37 @@ PanelWindow {
     support = null
     clearWalkIntent()
     // The surface may not be mapped yet -- fresh start, or just shown again
-    // after a hide -- and then width and height are collapsed. Width already
-    // falls back to the output's own size; the ground must too, or clampY
-    // pins the restored y at headroom and the mate comes back in the sky.
+    // after a hide -- and then width is collapsed; the output's own size
+    // stands in. (floorY makes the same fallback for the ground itself.)
     var w = width > 0 ? width : (screen ? screen.width : 0)
-    var groundY = height > 0 ? floorY : (screen ? screen.height : 0)
     var svc = petService
     if (svc && svc.petX >= 0 && svc.petX <= w - spriteW && w > 0) {
       petX = svc.petX
-      petY = Math.max(headroom, Math.min(groundY, svc.petY))
+      petY = clampY(svc.petY)
     } else {
       petX = Math.max(0, w / 2 - spriteW / 2)
-      petY = groundY
+      petY = floorY
     }
     facingLeft = svc ? svc.facingLeft : false
     // Whatever was in flight no longer makes sense against the new geometry:
     // a walk resumed here keeps a stale target and a restored facing, which
-    // reads as moonwalking. Stand down to idle; only a live drag survives.
+    // reads as moonwalking. Stand down to idle -- handing a mid-pull pointer
+    // back first, as the pull's own timeout does; only a live drag survives.
+    if (action === "pull") warpCursor(pullOriginX, pullOriginY)
     if (action === "chase" || action === "pull") endChase(false)
-    if (action !== "drag") action = "idle"
+    if (action !== "drag") {
+      vx = 0
+      vy = 0
+      action = "idle"
+      // The restored spot can be mid-air: the perch it stood on is gone, or
+      // the fall it was in was frozen while hidden. Idle has no gravity, so
+      // finish the trip as a fall -- gently, this is bookkeeping, not a
+      // throw.
+      if (petY < floorY - 1) {
+        gentleFall = true
+        startFall()
+      }
+    }
     refreshDebounce.restart()
   }
 
