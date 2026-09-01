@@ -977,6 +977,11 @@ PanelWindow {
     resetPosition()
   }
   onFloorYChanged: {
+    // A hidden window is unmapped and its height collapses, so this fires
+    // with a floor near y 0 and would haul the mate to the top of the
+    // screen. The show path re-grounds through resetPosition and the real
+    // floor's own change; while hidden, the position must not move.
+    if (!visible) return
     if ((action === "idle") && !support && Math.abs(petY - floorY) > 1) petY = floorY
   }
 
