@@ -372,9 +372,13 @@ PanelWindow {
     for (var i = 0; i < screens.length; i++) {
       if (screens[i].name !== name) continue
       var target = screens[i]
-      gentleFall = true
-      if (migrateTo(target, Math.max(0, target.width / 2 - spriteW / 2), headroom + 4))
+      // Only once the migration is actually happening: migrateTo refuses the
+      // current screen, and a gentleFall set with no fall to consume it would
+      // silently soften the next real drop instead.
+      if (migrateTo(target, Math.max(0, target.width / 2 - spriteW / 2), headroom + 4)) {
+        gentleFall = true
         startFall()
+      }
       return true
     }
     return false
