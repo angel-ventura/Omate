@@ -340,6 +340,16 @@ PanelWindow {
     return best
   }
 
+  // A walk that is on its way somewhere specific carries its purpose in
+  // pendingClimb/pendingCorner. Anything that abandons or replaces the walk
+  // must drop the whole intent through here — clearing only the flag a call
+  // site happens to know about is how a stale pendingCorner once made an
+  // unrelated wander end in the corner pose in the middle of the floor.
+  function clearWalkIntent() {
+    pendingClimb = null
+    pendingCorner = false
+  }
+
   // Move the whole overlay to another output, keeping the mate at the given
   // local position. The layer surface itself migrates; if the compositor
   // drops the pointer grab while doing so, the drag's onCanceled turns the
@@ -347,7 +357,7 @@ PanelWindow {
   function migrateTo(other, localX, localY) {
     if (!other || !screen || other.name === screen.name) return false
     support = null
-    pendingClimb = null
+    clearWalkIntent()
     migrating = true
     screenTarget = other
     petX = clampX(localX)
@@ -371,7 +381,7 @@ PanelWindow {
   }
 
   function startFall() {
-    pendingClimb = null
+    clearWalkIntent()
     if (action !== "fall") fallStartY = petY
     action = "fall"
   }
@@ -405,8 +415,10 @@ PanelWindow {
     var bounds = currentSurfaceBounds()
     var leftX = bounds.x1
     var rightX = bounds.x2 - spriteW
-    pendingCorner = true
+    // After startWalkTo: it clears the previous walk's intent, and this trip
+    // IS the new intent.
     startWalkTo((petX - leftX) <= (rightX - petX) ? leftX : rightX, null)
+    pendingCorner = true
   }
 
   // --- cursor chase ------------------------------------------------------
@@ -524,6 +536,7 @@ PanelWindow {
 
   function endChase(rest) {
     if (action === "chase" || action === "pull") action = "idle"
+    clearWalkIntent()
     pullElapsed = 0
     chaseElapsed = 0
     if (rest) { chaseResting = true; chaseRestTimer.restart() }
@@ -696,6 +709,7 @@ PanelWindow {
     if (asleep && petService) petService.wake(false)
     var bounds = currentSurfaceBounds()
     targetX = Math.max(bounds.x1, Math.min(bounds.x2 - spriteW, x))
+    clearWalkIntent()
     pendingClimb = climb || null
     facingLeft = targetX < petX
     action = "walk"
@@ -703,6 +717,7 @@ PanelWindow {
 
   function walkTo(x) {
     if (asleep && petService) petService.wake(false)
+    clearWalkIntent()
     targetX = clampX(x)
     facingLeft = targetX < petX
     action = "walk"
@@ -726,7 +741,6 @@ PanelWindow {
     if (candidates.length === 0) {
       // Nothing to land on: a little jump that ends in a tumble.
       support = null
-      pendingClimb = null
       fallStartY = petY
       vy = -maxFallSpeed * 0.55
       vx = (Math.random() - 0.5) * petScale * 220
@@ -737,7 +751,7 @@ PanelWindow {
     petX = clampX(pick.x1 + Math.random() * Math.max(1, pick.x2 - pick.x1 - spriteW))
     petY = pick.y
     support = pick
-    pendingClimb = null
+    clearWalkIntent()
     vx = 0
     vy = 0
     facingLeft = Math.random() < 0.5
@@ -802,8 +816,7 @@ PanelWindow {
       if (root.asleep && (root.action === "chase" || root.action === "pull"))
         root.endChase(false)
       if (root.asleep && (root.action === "walk" || root.action === "climb")) {
-        root.pendingClimb = null
-        root.pendingCorner = false
+        root.clearWalkIntent()
         root.targetX = root.petX
         root.action = "idle"
       }
@@ -928,7 +941,7 @@ PanelWindow {
 
   function resetPosition() {
     support = null
-    pendingClimb = null
+    clearWalkIntent()
     var w = width > 0 ? width : (screen ? screen.width : 0)
     var svc = petService
     if (svc && svc.petX >= 0 && svc.petX <= w - spriteW && w > 0) {
@@ -1062,8 +1075,7 @@ PanelWindow {
           if (petting.active) petting.stop()
           root.action = "drag"
           root.support = null
-          root.pendingClimb = null
-          root.pendingCorner = false
+          root.clearWalkIntent()
           root.endChase(true)
           root.vx = 0
           root.vy = 0
