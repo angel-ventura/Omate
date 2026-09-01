@@ -94,17 +94,12 @@ PanelWindow {
 
   readonly property var hyprMonitor: Hyprland.monitorFor(root.screen)
 
-  // The bar's reserved strip, so the floor sits above a bottom bar. An
-  // unmapped surface (hidden mate, window not yet shown) has no height, so
-  // the output's own stands in -- otherwise everything measured against the
-  // floor (clampY, landings, migrations, restores) collapses to the top of
-  // the screen.
+  // The bar's reserved strip, so the floor sits above a bottom bar.
   readonly property real floorY: {
-    var h = height > 0 ? height : (screen ? screen.height : 0)
     var ipc = hyprMonitor ? hyprMonitor.lastIpcObject : null
     var reservedBottom = ipc && ipc.reserved && ipc.reserved.length > 3
       ? Number(ipc.reserved[3]) : 0
-    return Math.max(0, h - reservedBottom)
+    return height - reservedBottom
   }
 
   // The compositor only pushes monitor events on (un)plug and mode changes;
@@ -345,16 +340,6 @@ PanelWindow {
     return best
   }
 
-  // A walk that is on its way somewhere specific carries its purpose in
-  // pendingClimb/pendingCorner. Anything that abandons or replaces the walk
-  // must drop the whole intent through here — clearing only the flag a call
-  // site happens to know about is how a stale pendingCorner once made an
-  // unrelated wander end in the corner pose in the middle of the floor.
-  function clearWalkIntent() {
-    pendingClimb = null
-    pendingCorner = false
-  }
-
   // Move the whole overlay to another output, keeping the mate at the given
   // local position. The layer surface itself migrates; if the compositor
   // drops the pointer grab while doing so, the drag's onCanceled turns the
@@ -362,7 +347,7 @@ PanelWindow {
   function migrateTo(other, localX, localY) {
     if (!other || !screen || other.name === screen.name) return false
     support = null
-    clearWalkIntent()
+    pendingClimb = null
     migrating = true
     screenTarget = other
     petX = clampX(localX)
@@ -377,20 +362,16 @@ PanelWindow {
     for (var i = 0; i < screens.length; i++) {
       if (screens[i].name !== name) continue
       var target = screens[i]
-      // Only once the migration is actually happening: migrateTo refuses the
-      // current screen, and a gentleFall set with no fall to consume it would
-      // silently soften the next real drop instead.
-      if (migrateTo(target, Math.max(0, target.width / 2 - spriteW / 2), headroom + 4)) {
-        gentleFall = true
+      gentleFall = true
+      if (migrateTo(target, Math.max(0, target.width / 2 - spriteW / 2), headroom + 4))
         startFall()
-      }
       return true
     }
     return false
   }
 
   function startFall() {
-    clearWalkIntent()
+    pendingClimb = null
     if (action !== "fall") fallStartY = petY
     action = "fall"
   }
@@ -424,7 +405,8 @@ PanelWindow {
     var bounds = currentSurfaceBounds()
     var leftX = bounds.x1
     var rightX = bounds.x2 - spriteW
-    startWalkTo((petX - leftX) <= (rightX - petX) ? leftX : rightX, null, true)
+    pendingCorner = true
+    startWalkTo((petX - leftX) <= (rightX - petX) ? leftX : rightX, null)
   }
 
   // --- cursor chase ------------------------------------------------------
@@ -512,13 +494,13 @@ PanelWindow {
   // A plain wander IS interruptible -- a mate that only noticed the pointer
   // while standing perfectly still would almost never notice it at all, since
   // wandering is its default state. A walk that is on its way somewhere
-  // specific (a climb approach, a corner trip) is left to finish.
+  // specific (a climb approach) is left to finish.
   function chaseAllowed() {
     if (!chaseEnabled || asleep || chaseResting || menu.open || support)
       return false
     if (!hasBiteArt()) return false
     if (action === "idle" || action === "chase" || action === "pull") return true
-    return action === "walk" && !pendingClimb && !pendingCorner
+    return action === "walk" && !pendingClimb
   }
 
   // The chomp is played with the existing `poked` pose, so a pack without one
@@ -541,14 +523,7 @@ PanelWindow {
   }
 
   function endChase(rest) {
-    // Intent is dropped only when a chase is actually being ended. tickChase
-    // calls this as a no-op on every poll tick while chasing is not allowed,
-    // and an unconditional clear there would wipe a corner trip's purpose
-    // mid-walk just because the chase feature happens to be armed.
-    if (action === "chase" || action === "pull") {
-      action = "idle"
-      clearWalkIntent()
-    }
+    if (action === "chase" || action === "pull") action = "idle"
     pullElapsed = 0
     chaseElapsed = 0
     if (rest) { chaseResting = true; chaseRestTimer.restart() }
@@ -717,30 +692,17 @@ PanelWindow {
     }
   }
 
-  // The optional climb/corner arguments ARE the new walk's intent, set
-  // atomically with the clear of the old one -- setting a flag before or
-  // after this call is how intents end up stale or wiped.
-  function startWalkTo(x, climb, corner) {
+  function startWalkTo(x, climb) {
     if (asleep && petService) petService.wake(false)
     var bounds = currentSurfaceBounds()
     targetX = Math.max(bounds.x1, Math.min(bounds.x2 - spriteW, x))
-    clearWalkIntent()
     pendingClimb = climb || null
-    pendingCorner = corner === true
     facingLeft = targetX < petX
     action = "walk"
   }
 
   function walkTo(x) {
     if (asleep && petService) petService.wake(false)
-    // Reachable mid-climb from the menu's "Walk over", and a walk only moves
-    // horizontally -- started in mid-air it would carry the mate across the
-    // sky. Abandon by falling instead; it can wander after it lands.
-    if (!support && petY < floorY - 1) {
-      startFall()
-      return
-    }
-    clearWalkIntent()
     targetX = clampX(x)
     facingLeft = targetX < petX
     action = "walk"
@@ -764,6 +726,7 @@ PanelWindow {
     if (candidates.length === 0) {
       // Nothing to land on: a little jump that ends in a tumble.
       support = null
+      pendingClimb = null
       fallStartY = petY
       vy = -maxFallSpeed * 0.55
       vx = (Math.random() - 0.5) * petScale * 220
@@ -774,7 +737,7 @@ PanelWindow {
     petX = clampX(pick.x1 + Math.random() * Math.max(1, pick.x2 - pick.x1 - spriteW))
     petY = pick.y
     support = pick
-    clearWalkIntent()
+    pendingClimb = null
     vx = 0
     vy = 0
     facingLeft = Math.random() < 0.5
@@ -839,7 +802,8 @@ PanelWindow {
       if (root.asleep && (root.action === "chase" || root.action === "pull"))
         root.endChase(false)
       if (root.asleep && (root.action === "walk" || root.action === "climb")) {
-        root.clearWalkIntent()
+        root.pendingClimb = null
+        root.pendingCorner = false
         root.targetX = root.petX
         root.action = "idle"
       }
@@ -964,10 +928,7 @@ PanelWindow {
 
   function resetPosition() {
     support = null
-    clearWalkIntent()
-    // The surface may not be mapped yet -- fresh start, or just shown again
-    // after a hide -- and then width is collapsed; the output's own size
-    // stands in. (floorY makes the same fallback for the ground itself.)
+    pendingClimb = null
     var w = width > 0 ? width : (screen ? screen.width : 0)
     var svc = petService
     if (svc && svc.petX >= 0 && svc.petX <= w - spriteW && w > 0) {
@@ -978,25 +939,7 @@ PanelWindow {
       petY = floorY
     }
     facingLeft = svc ? svc.facingLeft : false
-    // Whatever was in flight no longer makes sense against the new geometry:
-    // a walk resumed here keeps a stale target and a restored facing, which
-    // reads as moonwalking. Stand down to idle -- handing a mid-pull pointer
-    // back first, as the pull's own timeout does; only a live drag survives.
-    if (action === "pull") warpCursor(pullOriginX, pullOriginY)
-    if (action === "chase" || action === "pull") endChase(false)
-    if (action !== "drag") {
-      vx = 0
-      vy = 0
-      action = "idle"
-      // The restored spot can be mid-air: the perch it stood on is gone, or
-      // the fall it was in was frozen while hidden. Idle has no gravity, so
-      // finish the trip as a fall -- gently, this is bookkeeping, not a
-      // throw.
-      if (petY < floorY - 1) {
-        gentleFall = true
-        startFall()
-      }
-    }
+    action = asleep ? "idle" : action
     refreshDebounce.restart()
   }
 
@@ -1017,11 +960,6 @@ PanelWindow {
     resetPosition()
   }
   onFloorYChanged: {
-    // A hidden window is unmapped and its height collapses, so this fires
-    // with a floor near y 0 and would haul the mate to the top of the
-    // screen. The show path re-grounds through resetPosition and the real
-    // floor's own change; while hidden, the position must not move.
-    if (!visible) return
     if ((action === "idle") && !support && Math.abs(petY - floorY) > 1) petY = floorY
   }
 
@@ -1124,7 +1062,8 @@ PanelWindow {
           if (petting.active) petting.stop()
           root.action = "drag"
           root.support = null
-          root.clearWalkIntent()
+          root.pendingClimb = null
+          root.pendingCorner = false
           root.endChase(true)
           root.vx = 0
           root.vy = 0
