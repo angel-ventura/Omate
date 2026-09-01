@@ -946,17 +946,26 @@ PanelWindow {
   function resetPosition() {
     support = null
     clearWalkIntent()
+    // The surface may not be mapped yet -- fresh start, or just shown again
+    // after a hide -- and then width and height are collapsed. Width already
+    // falls back to the output's own size; the ground must too, or clampY
+    // pins the restored y at headroom and the mate comes back in the sky.
     var w = width > 0 ? width : (screen ? screen.width : 0)
+    var groundY = height > 0 ? floorY : (screen ? screen.height : 0)
     var svc = petService
     if (svc && svc.petX >= 0 && svc.petX <= w - spriteW && w > 0) {
       petX = svc.petX
-      petY = clampY(svc.petY)
+      petY = Math.max(headroom, Math.min(groundY, svc.petY))
     } else {
       petX = Math.max(0, w / 2 - spriteW / 2)
-      petY = floorY
+      petY = groundY
     }
     facingLeft = svc ? svc.facingLeft : false
-    action = asleep ? "idle" : action
+    // Whatever was in flight no longer makes sense against the new geometry:
+    // a walk resumed here keeps a stale target and a restored facing, which
+    // reads as moonwalking. Stand down to idle; only a live drag survives.
+    if (action === "chase" || action === "pull") endChase(false)
+    if (action !== "drag") action = "idle"
     refreshDebounce.restart()
   }
 
