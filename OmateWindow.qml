@@ -539,8 +539,14 @@ PanelWindow {
   }
 
   function endChase(rest) {
-    if (action === "chase" || action === "pull") action = "idle"
-    clearWalkIntent()
+    // Intent is dropped only when a chase is actually being ended. tickChase
+    // calls this as a no-op on every poll tick while chasing is not allowed,
+    // and an unconditional clear there would wipe a corner trip's purpose
+    // mid-walk just because the chase feature happens to be armed.
+    if (action === "chase" || action === "pull") {
+      action = "idle"
+      clearWalkIntent()
+    }
     pullElapsed = 0
     chaseElapsed = 0
     if (rest) { chaseResting = true; chaseRestTimer.restart() }
