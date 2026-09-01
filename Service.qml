@@ -369,13 +369,16 @@ Item {
 
   // --- timers --------------------------------------------------------------------
 
-  // Nap check: ignored for long enough? Lights out.
+  // Nap check: ignored for long enough? Lights out. A mate that has been put
+  // away is not being ignored, it is away -- napping while hidden played the
+  // sleep sound out of an empty screen.
   Timer {
     interval: 15000
     running: root.initialized
     repeat: true
     onTriggered: {
-      if (root.sleeping || root.lastInteractionMs <= 0) return
+      if (root.sleeping || root.settings.visible !== true) return
+      if (root.lastInteractionMs <= 0) return
       var minutes = Number(root.settings.sleepMinutes)
       if (!isFinite(minutes) || minutes <= 0) return
       if (Date.now() - root.lastInteractionMs >= minutes * 60000) root.doze()
@@ -439,7 +442,14 @@ Item {
     for (var key in defaultSettings) merged[key] = defaultSettings[key]
     for (var current in settings) if (current in merged) merged[current] = settings[current]
     for (var change in patch) if (change in merged) merged[change] = patch[change]
+    // Watched here, on the one chokepoint every visibility write passes
+    // through, rather than in the setMateVisible wrapper a future show-path
+    // might bypass: coming back from hidden restarts the nap clock. Time
+    // spent hidden is "away", not "ignored" -- with the stale stamp kept,
+    // the mate would doze, with sound, within one tick of its return.
+    var wasHidden = settings.visible !== true
     settings = merged
+    if (wasHidden && merged.visible === true) noteInteraction()
     settingsFile.setText(JSON.stringify(settings, null, 2) + "\n")
   }
 
@@ -473,6 +483,12 @@ Item {
       petX = -1; petY = -1
       console.warn("omate: state file unreadable (" + error + "), starting fresh")
     }
+
+    // The restored stamp is from the previous session, possibly hours old.
+    // The mate just arrived with the shell; its nap clock starts now, or the
+    // first 15s tick would doze it, with sound, seconds after login. Zero
+    // stays zero: "never interacted" still means the nap timer waits.
+    if (lastInteractionMs > 0) lastInteractionMs = Date.now()
 
     initialized = true
 
